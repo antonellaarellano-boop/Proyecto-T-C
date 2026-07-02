@@ -1,10 +1,11 @@
 'use client';
 
 import * as React from 'react';
+import * as XLSX from 'xlsx';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { Users, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Users, Pencil, Plus, Search, Trash2, Download } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -97,6 +98,40 @@ export function ColaboradoresPage({ initialColaboradores, areaOptions }: Props) 
   }, [items, search, tab]);
 
   const activos = items.filter((p) => p.status === 'Activo').length;
+
+  // Descarga la tabla (lo que está filtrado: tab + búsqueda) en un .xlsx.
+  function exportToExcel() {
+    if (filtered.length === 0) {
+      toast.error('No hay colaboradores para descargar');
+      return;
+    }
+    const header = [
+      'Status',
+      'Área',
+      'Nombres Completos',
+      'Fecha ingreso',
+      'Fecha nacimiento',
+      'DNI',
+      'Cargo',
+    ];
+    const aoa: string[][] = [header];
+    for (const p of filtered) {
+      aoa.push([
+        p.status,
+        p.area || '',
+        p.name,
+        formatDate(p.hireDate),
+        formatDate(p.birthDate),
+        p.dni || '',
+        p.position || '',
+      ]);
+    }
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Colaboradores');
+    const tabLabel = tab === 'cese' ? 'Cese' : 'Activos';
+    XLSX.writeFile(wb, `Colaboradores - ${tabLabel}.xlsx`);
+  }
 
   async function handleDelete() {
     if (!confirmDelete) return;
@@ -213,6 +248,15 @@ export function ColaboradoresPage({ initialColaboradores, areaOptions }: Props) 
                     className="pl-9"
                   />
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={exportToExcel}
+                >
+                  <Download className="h-4 w-4" />
+                  Excel
+                </Button>
                 {canMutate && (
                   <Button variant="gradient" size="sm" className="shrink-0" onClick={() => setCreating(true)}>
                     <Plus className="h-4 w-4" />

@@ -3,6 +3,14 @@ const nextConfig = {
   reactStrictMode: true,
   experimental: {
     optimizePackageImports: ['lucide-react', 'recharts', 'framer-motion'],
+    // Router Cache del cliente: no cachear páginas dinámicas al navegar, así
+    // los datos (ej. lista de colaboradores en Eventos) siempre se re-piden
+    // frescos al cambiar de sección. Sin esto, Next servía RSC cacheado y la
+    // lista quedaba desactualizada tras crear/editar en Colaboradores.
+    staleTimes: {
+      dynamic: 0,
+      static: 180,
+    },
   },
   images: {
     remotePatterns: [

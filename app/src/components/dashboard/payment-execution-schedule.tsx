@@ -2,18 +2,29 @@
 
 import * as React from 'react';
 import {
+  Bar,
+  BarChart,
+  Cell,
+  LabelList,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { CalendarCheck } from 'lucide-react';
+import { CalendarCheck, GitCompareArrows } from 'lucide-react';
 
 export interface ExecItem {
   id: string;
   name: string;
   scheduledAt?: string; // "YYYY-MM-DD" o "YYYY-MM-DDTHH:mm" (hora local)
+  paidAt?: string; // "YYYY-MM-DD" — fecha real en que se pagó
 }
 
 const WEEKDAYS = [
@@ -107,6 +118,7 @@ export function PaymentExecutionSchedule({ items }: { items: ExecItem[] }) {
   }, [items]);
 
   return (
+    <>
     <Card>
       <CardHeader>
         <div className="flex min-w-0 items-start gap-3">
@@ -165,6 +177,144 @@ export function PaymentExecutionSchedule({ items }: { items: ExecItem[] }) {
             )}
           </>
         )}
+      </CardContent>
+    </Card>
+    <ExecutionVsActualChart items={items} />
+    </>
+  );
+}
+
+// ============================================================================
+// Gráfico: día en que DEBÍA pagarse (ejecución proyectada) vs. día REAL de pago.
+// El "desfase" son los días de diferencia: + tarde (rojo), 0 a tiempo (verde),
+// − adelantado (azul). Solo entran los pagos con fecha real registrada.
+// ============================================================================
+function diffDays(a: Date, b: Date): number {
+  const da = new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime();
+  const db = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime();
+  return Math.round((da - db) / 86_400_000);
+}
+
+interface CompareRow {
+  name: string;
+  expected: Date;
+  paid: Date;
+  desfase: number; // paid - expected, en días
+}
+
+function ExecutionVsActualChart({ items }: { items: ExecItem[] }) {
+  const rows = React.useMemo<CompareRow[]>(() => {
+    const out: CompareRow[] = [];
+    for (const it of items) {
+      const sched = it.scheduledAt ? parseLocal(it.scheduledAt) : null;
+      const paid = it.paidAt ? parseLocal(it.paidAt) : null;
+      if (!sched || !paid) continue;
+      const expected = nextExecution(sched);
+      out.push({ name: it.name, expected, paid, desfase: diffDays(paid, expected) });
+    }
+    return out.sort((a, b) => b.desfase - a.desfase);
+  }, [items]);
+
+  if (rows.length === 0) return null;
+
+  const aTiempo = rows.filter((r) => r.desfase === 0).length;
+  const tarde = rows.filter((r) => r.desfase > 0).length;
+  const antes = rows.filter((r) => r.desfase < 0).length;
+  const colorOf = (d: number) =>
+    d > 0 ? '#D14646' : d < 0 ? '#2563EB' : '#22C55E';
+  const height = Math.max(180, rows.length * 38 + 40);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="shrink-0 rounded-xl bg-violet-100 p-2 text-violet-700 dark:bg-violet-600/20 dark:text-violet-100">
+            <GitCompareArrows className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <CardTitle>Programado vs. pago real · desfase</CardTitle>
+            <CardDescription>
+              Días entre cuándo debía ejecutarse y cuándo se pagó de verdad ·{' '}
+              <span className="font-semibold text-emerald-600">{aTiempo} a tiempo</span>
+              {' · '}
+              <span className="font-semibold text-rose-600">{tarde} tarde</span>
+              {' · '}
+              <span className="font-semibold text-blue-600">{antes} antes</span>
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div style={{ width: '100%', height }}>
+          <ResponsiveContainer>
+            <BarChart
+              layout="vertical"
+              data={rows}
+              margin={{ top: 4, right: 56, bottom: 4, left: 8 }}
+              barCategoryGap={10}
+            >
+              <XAxis type="number" hide />
+              <YAxis
+                type="category"
+                dataKey="name"
+                width={150}
+                tick={{ fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+              />
+              <Tooltip
+                cursor={{ fill: 'rgba(148,163,184,0.12)' }}
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null;
+                  const r = payload[0].payload as CompareRow;
+                  const lbl =
+                    r.desfase > 0
+                      ? `${r.desfase} día${r.desfase === 1 ? '' : 's'} tarde`
+                      : r.desfase < 0
+                        ? `${-r.desfase} día${r.desfase === -1 ? '' : 's'} antes`
+                        : 'a tiempo';
+                  return (
+                    <div className="rounded-lg border border-border bg-popover px-3 py-2 text-xs shadow-md">
+                      <p className="mb-1 font-semibold text-foreground">{r.name}</p>
+                      <p className="text-muted-foreground">
+                        Debía pagarse:{' '}
+                        <span className="font-medium capitalize text-foreground">
+                          {fmtDay(r.expected)}
+                        </span>
+                      </p>
+                      <p className="text-muted-foreground">
+                        Se pagó:{' '}
+                        <span className="font-medium capitalize text-foreground">
+                          {fmtDay(r.paid)}
+                        </span>
+                      </p>
+                      <p className="mt-1 font-semibold" style={{ color: colorOf(r.desfase) }}>
+                        {lbl}
+                      </p>
+                    </div>
+                  );
+                }}
+              />
+              <Bar dataKey="desfase" radius={[4, 4, 4, 4]} isAnimationActive={false}>
+                {rows.map((r) => (
+                  <Cell key={r.name} fill={colorOf(r.desfase)} />
+                ))}
+                <LabelList
+                  dataKey="desfase"
+                  position="right"
+                  formatter={(v: number) =>
+                    v > 0 ? `+${v} d` : v < 0 ? `${v} d` : 'a tiempo'
+                  }
+                  style={{ fontSize: 11, fontWeight: 600, fill: 'currentColor' }}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Cargá la fecha real en la columna "Pagado realmente" de la tabla de Programados
+          para que el pago aparezca acá.
+        </p>
       </CardContent>
     </Card>
   );

@@ -23,6 +23,7 @@ const rheSchema = z.object({
   entity: z.string().trim().nullable().optional(),
   paymentDate: z.string().trim().nullable().optional(),
   status: z.record(statusEnum).optional(),
+  scheduledAt: z.record(z.string()).optional(),
 });
 
 export async function GET() {
@@ -66,6 +67,7 @@ export async function POST(req: NextRequest) {
       entity: d.entity || undefined,
       paymentDate: d.paymentDate || undefined,
       status: d.status || {},
+      scheduledAt: d.scheduledAt || undefined,
     });
     await repo.logActivity({
       userId: session.sub,

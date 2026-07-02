@@ -8,7 +8,10 @@ export const runtime = 'nodejs';
 
 const participationSchema = z.record(
   z.string(),
-  z.enum(PARTICIPATION_STATUSES as [string, ...string[]]),
+  z.union([
+    z.enum(PARTICIPATION_STATUSES as [string, ...string[]]),
+    z.literal(''), // '' = sin marca (blanco)
+  ]),
 );
 
 const createSchema = z.object({

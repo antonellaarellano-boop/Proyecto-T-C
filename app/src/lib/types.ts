@@ -526,6 +526,8 @@ export interface FixedPayment {
   status: Record<string, PaymentStatus>;
   // Fecha (ISO) en que se marcó "Programado" cada mes. Clave = mes.
   scheduledAt?: Record<string, string>;
+  // Fecha real (YYYY-MM-DD) en que efectivamente se pagó cada mes. Clave = mes.
+  paidAt?: Record<string, string>;
 }
 
 // RHE — Recibos por Honorarios Electrónicos (personas pagadas por honorarios).
@@ -541,6 +543,10 @@ export interface RheEntry {
   paymentDate?: string;   // Fecha de pago (texto libre)
   // Estado de pago por mes; un mes ausente se considera "Pendiente".
   status: Record<string, PaymentStatus>;
+  // Fecha (ISO) en que se marcó "Programado" cada mes. Clave = mes.
+  scheduledAt?: Record<string, string>;
+  // Fecha real (YYYY-MM-DD) en que efectivamente se pagó cada mes. Clave = mes.
+  paidAt?: Record<string, string>;
 }
 
 // Gasto puntual asociado a un evento de engagement, en un mes dado.
@@ -551,4 +557,19 @@ export interface EngagementExpense {
   month: string;         // clave de mes (ene..dic, ver PAYMENT_MONTHS)
   name: string;          // Nombre de gasto
   amount?: number;       // Monto gastado
+}
+
+// Asistencia a una reserva de escritorio (Sitios / Desk Buddy). Dato propio:
+// marca si la persona que reservó efectivamente llegó. Clave = reservationId.
+export const SITIO_ATTENDANCE_STATUSES = ['Llegó', 'No llegó'] as const;
+export type SitioAttendanceStatus = (typeof SITIO_ATTENDANCE_STATUSES)[number];
+
+export interface SitioAttendance {
+  id: string;             // record id interno (Airtable)
+  reservationId: string;  // id de la reserva en Desk Buddy (Supabase)
+  date?: string;          // YYYY-MM-DD (snapshot)
+  person?: string;        // nombre (snapshot)
+  desk?: string;          // número de escritorio (snapshot)
+  floor?: number;         // piso (snapshot)
+  status: SitioAttendanceStatus;
 }

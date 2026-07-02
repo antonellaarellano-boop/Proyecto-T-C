@@ -143,16 +143,20 @@ export function PagosFijosTable({
     return counts;
   }, [payments, selectedMonth]);
 
-  // Detalle de los pagos programados del mes + la fecha en que se programaron.
+  // Programados del mes: se basa en TENER fecha de programación guardada, no en el
+  // status actual. Así no desaparecen al cambiar de Programado a otro estado; se
+  // quitan manualmente con el botón de la fila.
   const programados = React.useMemo(
     () =>
       payments
-        .filter((p) => (p.status[selectedMonth] || DEFAULT_PAYMENT_STATUS) === 'Programado')
+        .filter((p) => !!p.scheduledAt?.[selectedMonth])
         .map((p) => ({
           id: p.id,
           name: p.name,
           paymentDate: p.paymentDate,
           scheduledAt: p.scheduledAt?.[selectedMonth],
+          paidAt: p.paidAt?.[selectedMonth],
+          status: p.status[selectedMonth] || DEFAULT_PAYMENT_STATUS,
         })),
     [payments, selectedMonth],
   );
@@ -218,6 +222,58 @@ export function PagosFijosTable({
     } catch (err: any) {
       setPayments(prev);
       toast.error(err.message || 'No se pudo actualizar la fecha');
+    }
+  }
+
+  // Registra/edita la fecha REAL en que se pagó (mes elegido). '' la borra.
+  async function setPaidDate(paymentId: string, monthKey: string, iso: string) {
+    const payment = payments.find((p) => p.id === paymentId);
+    if (!payment) return;
+    const newPaid = { ...(payment.paidAt || {}) };
+    if (iso) newPaid[monthKey] = iso;
+    else delete newPaid[monthKey];
+    const prev = payments;
+    setPayments((arr) =>
+      arr.map((p) => (p.id === paymentId ? { ...p, paidAt: newPaid } : p)),
+    );
+    try {
+      const res = await fetch(`/api/payments/${paymentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paidAt: newPaid }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as any).error || 'Error');
+      }
+    } catch (err: any) {
+      setPayments(prev);
+      toast.error(err.message || 'No se pudo guardar la fecha de pago');
+    }
+  }
+
+  // Quita manualmente un pago de la lista de Programados del mes (borra su fecha).
+  async function removeFromProgramados(paymentId: string) {
+    const payment = payments.find((p) => p.id === paymentId);
+    if (!payment) return;
+    const { [selectedMonth]: _omit, ...rest } = payment.scheduledAt || {};
+    const prev = payments;
+    setPayments((arr) =>
+      arr.map((p) => (p.id === paymentId ? { ...p, scheduledAt: rest } : p)),
+    );
+    try {
+      const res = await fetch(`/api/payments/${paymentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scheduledAt: rest }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as any).error || 'Error');
+      }
+    } catch (err: any) {
+      setPayments(prev);
+      toast.error(err.message || 'No se pudo quitar');
     }
   }
 
@@ -537,6 +593,9 @@ export function PagosFijosTable({
                     <Th>Nombre de pago</Th>
                     <Th>Fecha de pago</Th>
                     <Th>Programado el</Th>
+                    <Th>Pagado realmente</Th>
+                    <Th>Estado actual</Th>
+                    {canMutate && <Th className="text-right">Quitar</Th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -572,6 +631,60 @@ export function PagosFijosTable({
                           </span>
                         )}
                       </Td>
+                      <Td className="whitespace-nowrap">
+                        {canMutate ? (
+                          <input
+                            type="date"
+                            value={p.paidAt || ''}
+                            onChange={(e) =>
+                              setPaidDate(p.id, selectedMonth, e.target.value)
+                            }
+                            className="h-8 rounded-lg border border-input bg-background/60 px-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          />
+                        ) : p.paidAt ? (
+                          <span
+                            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                            style={{
+                              background: `${PAYMENT_STATUS_COLORS.Listo}1A`,
+                              color: PAYMENT_STATUS_COLORS.Listo,
+                            }}
+                          >
+                            {formatISODate(p.paidAt)}
+                          </span>
+                        ) : (
+                          <span className="text-xs italic text-muted-foreground">
+                            sin registrar
+                          </span>
+                        )}
+                      </Td>
+                      <Td className="whitespace-nowrap">
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                          style={{
+                            background: `${PAYMENT_STATUS_COLORS[p.status]}1A`,
+                            color: PAYMENT_STATUS_COLORS[p.status],
+                          }}
+                        >
+                          <span
+                            className="h-1.5 w-1.5 rounded-full"
+                            style={{ background: PAYMENT_STATUS_COLORS[p.status] }}
+                          />
+                          {p.status}
+                        </span>
+                      </Td>
+                      {canMutate && (
+                        <Td className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive hover:text-destructive"
+                            onClick={() => removeFromProgramados(p.id)}
+                            aria-label="Quitar de programados"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </Td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

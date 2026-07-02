@@ -60,6 +60,12 @@ interface Props {
 
 const DEFAULT_PARTICIPATION: ParticipationStatus = 'Aun No Participa';
 
+function eventDateFmt(iso?: string): string {
+  if (!iso) return '';
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
 export function EventosPage({
   initialEvents,
   initialParticipants,
@@ -131,19 +137,22 @@ export function EventosPage({
   const activos = participants.filter((p) => p.status === 'Activo').length;
 
   // ---- Mutaciones ----
+  // status '' = dejar en blanco (sin marca para ese evento).
   async function setParticipation(
     participant: EngagementParticipant,
     eventId: string,
-    status: ParticipationStatus,
+    status: ParticipationStatus | '',
   ) {
-    if (participant.participation[eventId] === status) return;
+    if ((participant.participation[eventId] || '') === status) return;
     const prev = participants;
     setParticipants((arr) =>
-      arr.map((p) =>
-        p.id === participant.id
-          ? { ...p, participation: { ...p.participation, [eventId]: status } }
-          : p,
-      ),
+      arr.map((p) => {
+        if (p.id !== participant.id) return p;
+        const nextPart = { ...p.participation };
+        if (status === '') delete nextPart[eventId];
+        else nextPart[eventId] = status;
+        return { ...p, participation: nextPart };
+      }),
     );
     try {
       const res = await fetch(`/api/engagement/participants/${participant.id}`, {
@@ -262,11 +271,16 @@ export function EventosPage({
                     onClick={() => setSelectedEventId(ev.id)}
                     aria-pressed={active}
                     className={cn(
-                      'py-1.5 text-xs font-semibold uppercase tracking-wide',
+                      'flex flex-col py-1.5 text-xs font-semibold uppercase tracking-wide',
                       canMutate && active ? 'pl-4 pr-1.5' : 'px-4',
                     )}
                   >
-                    {ev.name}
+                    <span>{ev.name}</span>
+                    {ev.date && (
+                      <span className="text-[9px] font-normal normal-case tracking-normal opacity-70">
+                        {eventDateFmt(ev.date)}
+                      </span>
+                    )}
                   </button>
                   {canMutate && active && (
                     <DropdownMenu>
@@ -433,8 +447,9 @@ export function EventosPage({
                           key={selectedEvent.id}
                           className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground"
                         >
-                          <div className="flex items-center justify-center gap-1">
-                            <span className="whitespace-nowrap">{selectedEvent.name}</span>
+                          <div className="flex flex-col items-center gap-0.5">
+                            <div className="flex items-center justify-center gap-1">
+                              <span className="whitespace-nowrap">{selectedEvent.name}</span>
                             {canMutate && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -464,6 +479,12 @@ export function EventosPage({
                                   )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
+                            )}
+                            </div>
+                            {selectedEvent.date && (
+                              <span className="text-[9px] font-normal normal-case text-muted-foreground">
+                                {eventDateFmt(selectedEvent.date)}
+                              </span>
                             )}
                           </div>
                         </th>
@@ -499,9 +520,7 @@ export function EventosPage({
                         {selectedEvent && (
                           <td key={selectedEvent.id} className="px-3 py-2 text-center">
                             <ParticipationCell
-                              status={
-                                p.participation[selectedEvent.id] || DEFAULT_PARTICIPATION
-                              }
+                              status={p.participation[selectedEvent.id] || undefined}
                               editable={canMutate}
                               onChange={(s) => setParticipation(p, selectedEvent.id, s)}
                             />
@@ -717,12 +736,12 @@ function ParticipationCell({
   editable,
   onChange,
 }: {
-  status: ParticipationStatus;
+  status?: ParticipationStatus;
   editable: boolean;
-  onChange: (s: ParticipationStatus) => void;
+  onChange: (s: ParticipationStatus | '') => void;
 }) {
-  const color = PARTICIPATION_COLORS[status];
-  const badge = (
+  const color = status ? PARTICIPATION_COLORS[status] : undefined;
+  const badge = status ? (
     <span
       className={cn(
         'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
@@ -732,6 +751,16 @@ function ParticipationCell({
     >
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
       {status}
+    </span>
+  ) : (
+    // Sin marca (ej. colaborador agregado después del evento). En blanco.
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-dashed border-border px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground',
+        editable && 'cursor-pointer hover:text-foreground hover:border-brand-blue-200',
+      )}
+    >
+      {editable ? '+ Marcar' : '—'}
     </span>
   );
 
@@ -753,6 +782,15 @@ function ParticipationCell({
             {s}
           </DropdownMenuItem>
         ))}
+        {status && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => onChange('')}>
+              <span className="h-2 w-2 rounded-full border border-dashed border-muted-foreground" />
+              Dejar en blanco
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

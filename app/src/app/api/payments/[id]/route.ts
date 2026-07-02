@@ -22,6 +22,7 @@ const patchSchema = z.object({
   paymentDate: z.string().trim().nullable().optional(),
   status: z.record(statusEnum).optional(),
   scheduledAt: z.record(z.string()).optional(),
+  paidAt: z.record(z.string()).optional(),
 });
 
 export async function PATCH(

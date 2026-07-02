@@ -17,6 +17,7 @@ import type {
   Notification,
   ReviewTime,
   SalaryRange,
+  SitioAttendance,
   Source,
   Stage,
   StageMovement,
@@ -83,6 +84,10 @@ import {
   listProductTypes as ptList,
   updateProductType as ptUpdate,
 } from './product-types-store';
+import {
+  listAttendance as sitiosListAttendance,
+  setAttendance as sitiosSetAttendance,
+} from './sitios-attendance-store';
 import {
   isKvAvailable,
   kvCreateUser,
@@ -689,6 +694,18 @@ export class MockRepository implements Repository {
   }
   async deleteRheEntry(id: string): Promise<void> {
     return rheDelete(id);
+  }
+
+  // ---- Sitios: asistencia ----
+  async listSitioAttendance(): Promise<SitioAttendance[]> {
+    return sitiosListAttendance();
+  }
+  async setSitioAttendance(
+    data: Omit<SitioAttendance, 'id' | 'status'> & {
+      status: SitioAttendance['status'] | null;
+    },
+  ): Promise<SitioAttendance | null> {
+    return sitiosSetAttendance(data);
   }
 
   // ---- Bienestar & Salud (exámenes médicos) ----

@@ -53,6 +53,25 @@ import { useCanMutate } from '@/components/auth/role-context';
 import { cn } from '@/lib/utils';
 import { PaymentsCharts } from '@/components/dashboard/payments-charts';
 import { AutoMonthsDialog } from '@/components/dashboard/auto-months-dialog';
+import { PaymentExecutionSchedule } from '@/components/dashboard/payment-execution-schedule';
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+function localNowInput(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(
+    d.getHours(),
+  )}:${pad2(d.getMinutes())}`;
+}
+function toDateTimeInput(s?: string): string {
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `${s}T00:00`;
+  return s.slice(0, 16);
+}
+function formatISODate(iso?: string): string {
+  if (!iso) return '—';
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
 
 export function RheTable({ initialEntries }: { initialEntries: RheEntry[] }) {
   const router = useRouter();
@@ -138,6 +157,23 @@ export function RheTable({ initialEntries }: { initialEntries: RheEntry[] }) {
     return counts;
   }, [entries, selectedMonth]);
 
+  // Programados del mes: se basa en TENER fecha de programación guardada (no en el
+  // status actual) → no desaparecen al cambiar de estado; se quitan manualmente.
+  const programados = React.useMemo(
+    () =>
+      entries
+        .filter((e) => !!e.scheduledAt?.[selectedMonth])
+        .map((e) => ({
+          id: e.id,
+          name: e.person,
+          paymentDate: e.paymentDate,
+          scheduledAt: e.scheduledAt?.[selectedMonth],
+          paidAt: e.paidAt?.[selectedMonth],
+          status: e.status[selectedMonth] || DEFAULT_PAYMENT_STATUS,
+        })),
+    [entries, selectedMonth],
+  );
+
   // Mutación genérica de un campo (mes o personStatus) con update optimista.
   async function patchEntry(entry: RheEntry, body: any, optimistic: (e: RheEntry) => RheEntry) {
     const prev = entries;
@@ -160,10 +196,49 @@ export function RheTable({ initialEntries }: { initialEntries: RheEntry[] }) {
 
   function setMonthStatus(entry: RheEntry, status: PaymentStatus) {
     if ((entry.status[selectedMonth] || DEFAULT_PAYMENT_STATUS) === status) return;
-    patchEntry(entry, { status: { [selectedMonth]: status } }, (e) => ({
+    // Al marcar "Programado" se registra la fecha/hora en que se eligió.
+    const scheduledAt =
+      status === 'Programado'
+        ? { ...(entry.scheduledAt || {}), [selectedMonth]: localNowInput() }
+        : entry.scheduledAt;
+    const body =
+      status === 'Programado'
+        ? { status: { [selectedMonth]: status }, scheduledAt }
+        : { status: { [selectedMonth]: status } };
+    patchEntry(entry, body, (e) => ({
       ...e,
       status: { ...e.status, [selectedMonth]: status },
+      scheduledAt,
     }));
+  }
+
+  // Edita la fecha en que se programó (mes seleccionado) de una persona.
+  function setScheduledDate(entryId: string, iso: string) {
+    const entry = entries.find((e) => e.id === entryId);
+    if (!entry) return;
+    const newScheduled = { ...(entry.scheduledAt || {}), [selectedMonth]: iso };
+    patchEntry(entry, { scheduledAt: newScheduled }, (e) => ({
+      ...e,
+      scheduledAt: newScheduled,
+    }));
+  }
+
+  // Registra/edita la fecha REAL en que se pagó (mes seleccionado). '' la borra.
+  function setPaidDate(entryId: string, iso: string) {
+    const entry = entries.find((e) => e.id === entryId);
+    if (!entry) return;
+    const newPaid = { ...(entry.paidAt || {}) };
+    if (iso) newPaid[selectedMonth] = iso;
+    else delete newPaid[selectedMonth];
+    patchEntry(entry, { paidAt: newPaid }, (e) => ({ ...e, paidAt: newPaid }));
+  }
+
+  // Quita manualmente una persona de la lista de Programados del mes (borra su fecha).
+  function removeFromProgramados(entryId: string) {
+    const entry = entries.find((e) => e.id === entryId);
+    if (!entry) return;
+    const { [selectedMonth]: _omit, ...rest } = entry.scheduledAt || {};
+    patchEntry(entry, { scheduledAt: rest }, (e) => ({ ...e, scheduledAt: rest }));
   }
 
   function setPersonStatus(entry: RheEntry, personStatus: EmployeeStatus) {
@@ -455,6 +530,130 @@ export function RheTable({ initialEntries }: { initialEntries: RheEntry[] }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Programados del mes + proyección de ejecución */}
+      {programados.length > 0 && (
+        <>
+          <Card>
+            <CardHeader>
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="shrink-0 rounded-xl bg-violet-100 p-2 text-violet-700 dark:bg-violet-600/20 dark:text-violet-100">
+                  <CalendarClock className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <CardTitle>Programados de {selectedMonthInfo.full}</CardTitle>
+                  <CardDescription>
+                    Fecha en que se marcó cada RHE como programado
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto rounded-xl border border-border">
+                <table className="w-full min-w-[520px] border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-muted/40 text-left">
+                      <Th>Persona</Th>
+                      <Th>Fecha de pago</Th>
+                      <Th>Programado el</Th>
+                      <Th>Pagado realmente</Th>
+                      <Th>Estado actual</Th>
+                      {canMutate && <Th className="text-right">Quitar</Th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {programados.map((p) => (
+                      <tr key={p.id} className="border-t border-border">
+                        <Td className="font-medium text-foreground">{p.name}</Td>
+                        <Td className="whitespace-nowrap text-muted-foreground">
+                          {p.paymentDate || '—'}
+                        </Td>
+                        <Td className="whitespace-nowrap">
+                          {canMutate ? (
+                            <input
+                              type="datetime-local"
+                              value={toDateTimeInput(p.scheduledAt)}
+                              onChange={(e) => setScheduledDate(p.id, e.target.value)}
+                              className="h-8 rounded-lg border border-input bg-background/60 px-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            />
+                          ) : p.scheduledAt ? (
+                            <span
+                              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                              style={{
+                                background: `${PAYMENT_STATUS_COLORS.Programado}1A`,
+                                color: PAYMENT_STATUS_COLORS.Programado,
+                              }}
+                            >
+                              {formatISODate(p.scheduledAt)}
+                            </span>
+                          ) : (
+                            <span className="text-xs italic text-muted-foreground">
+                              sin fecha registrada
+                            </span>
+                          )}
+                        </Td>
+                        <Td className="whitespace-nowrap">
+                          {canMutate ? (
+                            <input
+                              type="date"
+                              value={p.paidAt || ''}
+                              onChange={(e) => setPaidDate(p.id, e.target.value)}
+                              className="h-8 rounded-lg border border-input bg-background/60 px-2 text-sm shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            />
+                          ) : p.paidAt ? (
+                            <span
+                              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                              style={{
+                                background: `${PAYMENT_STATUS_COLORS.Listo}1A`,
+                                color: PAYMENT_STATUS_COLORS.Listo,
+                              }}
+                            >
+                              {formatISODate(p.paidAt)}
+                            </span>
+                          ) : (
+                            <span className="text-xs italic text-muted-foreground">
+                              sin registrar
+                            </span>
+                          )}
+                        </Td>
+                        <Td className="whitespace-nowrap">
+                          <span
+                            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                            style={{
+                              background: `${PAYMENT_STATUS_COLORS[p.status]}1A`,
+                              color: PAYMENT_STATUS_COLORS[p.status],
+                            }}
+                          >
+                            <span
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{ background: PAYMENT_STATUS_COLORS[p.status] }}
+                            />
+                            {p.status}
+                          </span>
+                        </Td>
+                        {canMutate && (
+                          <Td className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive hover:text-destructive"
+                              onClick={() => removeFromProgramados(p.id)}
+                              aria-label="Quitar de programados"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </Td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+          <PaymentExecutionSchedule items={programados} />
+        </>
+      )}
 
       <AutoMonthsDialog
         open={!!autoFor}

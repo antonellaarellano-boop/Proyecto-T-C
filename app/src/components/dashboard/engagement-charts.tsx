@@ -176,7 +176,7 @@ function EventPie({ ev }: { ev: EventParticipationDatum }) {
             {total}
           </span>
           <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-            activos
+            marcados
           </span>
         </div>
       </div>
@@ -505,7 +505,7 @@ export function NoParticipoByPersonChart({ data }: { data: PersonCountRow[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Eventos no participados · por persona</CardTitle>
+        <CardTitle>Inasistencias</CardTitle>
         <CardDescription>
           Cantidad de eventos en los que cada colaborador activo marcó "No Participo" ·{' '}
           {total} en total · tocá una barra para ver de qué eventos se trata

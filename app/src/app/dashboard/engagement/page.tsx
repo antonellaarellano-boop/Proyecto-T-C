@@ -19,8 +19,6 @@ import {
 export const metadata = { title: 'Engagement · Eventos' };
 export const dynamic = 'force-dynamic';
 
-const DEFAULT_PARTICIPATION: ParticipationStatus = 'Aun No Participa';
-
 function areaLabel(p: EngagementParticipant): string {
   return p.area && p.area.trim() ? p.area : 'Sin área';
 }
@@ -50,7 +48,9 @@ export default async function Page() {
     const counts = emptyCounts();
     const rows: { name: string; area: string; status: ParticipationStatus }[] = [];
     for (const p of active) {
-      const v = (p.participation[ev.id] || DEFAULT_PARTICIPATION) as ParticipationStatus;
+      // Sin marca (blanco) → no cuenta ni aparece en el anillo.
+      const v = p.participation[ev.id] as ParticipationStatus | undefined;
+      if (!v) continue;
       counts[v] += 1;
       rows.push({ name: p.name, area: areaLabel(p), status: v });
     }
@@ -69,7 +69,8 @@ export default async function Page() {
     if (!areaMap.has(a)) areaMap.set(a, emptyCounts());
     const rec = areaMap.get(a)!;
     for (const ev of events) {
-      const v = (p.participation[ev.id] || DEFAULT_PARTICIPATION) as ParticipationStatus;
+      const v = p.participation[ev.id] as ParticipationStatus | undefined;
+      if (!v) continue; // blanco no cuenta
       rec[v] += 1;
     }
   }
@@ -88,7 +89,7 @@ export default async function Page() {
   const anpMap = new Map<string, string[]>();
   if (desayuno) {
     for (const p of active) {
-      const v = (p.participation[desayuno.id] || DEFAULT_PARTICIPATION) as ParticipationStatus;
+      const v = p.participation[desayuno.id] as ParticipationStatus | undefined;
       if (v === 'Aun No Participa') {
         const a = areaLabel(p);
         const arr = anpMap.get(a) || [];

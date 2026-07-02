@@ -15,7 +15,13 @@ const patchSchema = z.object({
   dni: z.string().trim().nullable().optional(),
   position: z.string().trim().nullable().optional(),
   participation: z
-    .record(z.string(), z.enum(PARTICIPATION_STATUSES as [string, ...string[]]))
+    .record(
+      z.string(),
+      z.union([
+        z.enum(PARTICIPATION_STATUSES as [string, ...string[]]),
+        z.literal(''), // '' = dejar en blanco (limpia la marca)
+      ]),
+    )
     .optional(),
 });
 

@@ -122,7 +122,7 @@ export function GastosPorEvento({
 
   async function createEvent() {
     const name = newEventName.trim();
-    if (!name) return toast.error('Ingresá el nombre del evento');
+    if (!name) return toast.error('Ingresá el nombre de la actividad');
     try {
       const res = await fetch('/api/engagement/gasto-eventos', {
         method: 'POST',
@@ -136,10 +136,10 @@ export function GastosPorEvento({
       setEventId(item.id);
       setNewEventName('');
       setCreatingEvent(false);
-      toast.success('Evento creado');
+      toast.success('Actividad creada');
       router.refresh();
     } catch (err: any) {
-      toast.error(err.message || 'No se pudo crear el evento');
+      toast.error(err.message || 'No se pudo crear la actividad');
     }
   }
 
@@ -152,11 +152,11 @@ export function GastosPorEvento({
     try {
       const res = await fetch(`/api/engagement/gasto-eventos/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Error');
-      toast.success('Evento eliminado');
+      toast.success('Actividad eliminada');
       router.refresh();
     } catch {
       setEvents(prev);
-      toast.error('No se pudo eliminar el evento');
+      toast.error('No se pudo eliminar la actividad');
     }
   }
 
@@ -251,7 +251,7 @@ export function GastosPorEvento({
           {/* Gráfico 2: gasto por evento en el mes seleccionado */}
           <div>
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Gastos por evento · {monthInfo.full}
+              Gastos por actividad · {monthInfo.full}
               {monthGrandTotal > 0 && (
                 <span className="ml-2 normal-case text-muted-foreground/80">
                   {money(monthGrandTotal)} en total
@@ -337,9 +337,9 @@ export function GastosPorEvento({
               <Coins className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <CardTitle>Gastos por evento</CardTitle>
+              <CardTitle>Gastos por actividades del mes</CardTitle>
               <CardDescription>
-                Registrá tus eventos y elegí mes + evento para ver y cargar sus gastos
+                Registrá tus actividades y elegí mes + actividad para ver y cargar sus gastos
               </CardDescription>
             </div>
           </div>
@@ -372,10 +372,10 @@ export function GastosPorEvento({
             </div>
           </div>
 
-          {/* Barra de eventos (propios de este módulo) */}
+          {/* Barra de actividades (propias de este módulo) */}
           <div>
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Evento
+              Actividad
             </p>
             <div className="flex flex-wrap items-center gap-2">
               {events.map((ev) => {
@@ -424,12 +424,12 @@ export function GastosPorEvento({
                   }}
                 >
                   <Plus className="h-4 w-4" />
-                  Evento
+                  Actividad
                 </Button>
               )}
               {events.length === 0 && (
                 <span className="text-sm text-muted-foreground">
-                  Aún no registraste eventos. Creá uno con "+ Evento".
+                  Aún no registraste actividades. Creá una con "+ Actividad".
                 </span>
               )}
             </div>
@@ -538,19 +538,19 @@ export function GastosPorEvento({
             </div>
           ) : (
             <div className="flex h-24 items-center justify-center rounded-xl bg-muted/40 text-center text-sm text-muted-foreground">
-              Registrá y seleccioná un evento para cargar sus gastos
+              Registrá y seleccioná una actividad para cargar sus gastos
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Crear evento */}
+      {/* Crear actividad */}
       <Dialog open={creatingEvent} onOpenChange={setCreatingEvent}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Nuevo evento</DialogTitle>
+            <DialogTitle>Nueva actividad</DialogTitle>
             <DialogDescription>
-              Creá un evento para registrar sus gastos (independiente de los eventos de
+              Creá una actividad para registrar sus gastos (independiente de los eventos de
               participación).
             </DialogDescription>
           </DialogHeader>
@@ -562,7 +562,7 @@ export function GastosPorEvento({
             className="space-y-4"
           >
             <div className="space-y-1.5">
-              <Label>Nombre del evento</Label>
+              <Label>Nombre de la actividad</Label>
               <Input
                 value={newEventName}
                 onChange={(e) => setNewEventName(e.target.value)}
@@ -583,13 +583,13 @@ export function GastosPorEvento({
         </DialogContent>
       </Dialog>
 
-      {/* Confirmar eliminar evento */}
+      {/* Confirmar eliminar actividad */}
       <Dialog open={!!confirmDeleteEvent} onOpenChange={(v) => !v && setConfirmDeleteEvent(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Eliminar evento</DialogTitle>
+            <DialogTitle>Eliminar actividad</DialogTitle>
             <DialogDescription>
-              ¿Eliminar el evento{' '}
+              ¿Eliminar la actividad{' '}
               <span className="font-semibold text-foreground">{confirmDeleteEvent?.name}</span>?
               Sus gastos cargados dejarán de mostrarse.
             </DialogDescription>

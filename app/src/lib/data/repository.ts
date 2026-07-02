@@ -20,6 +20,7 @@ import type {
   Notification,
   ReviewTime,
   SalaryRange,
+  SitioAttendance,
   Source,
   Stage,
   StageMovement,
@@ -202,6 +203,15 @@ export interface Repository {
     patch: Partial<Omit<RheEntry, 'id'>>,
   ): Promise<RheEntry>;
   deleteRheEntry(id: string): Promise<void>;
+
+  // Sitios — asistencia (Llegó / No llegó) por reserva de Desk Buddy
+  listSitioAttendance(): Promise<SitioAttendance[]>;
+  // Upsert por reservationId; status null/'' borra la marca.
+  setSitioAttendance(
+    data: Omit<SitioAttendance, 'id' | 'status'> & {
+      status: SitioAttendance['status'] | null;
+    },
+  ): Promise<SitioAttendance | null>;
 
   // Bienestar & Salud — exámenes médicos (persistido fuera de Airtable en mock)
   listMedicalExams(): Promise<MedicalExam[]>;

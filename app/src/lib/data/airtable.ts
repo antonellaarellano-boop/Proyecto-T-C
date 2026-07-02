@@ -30,6 +30,7 @@ import type {
   Priority,
   ReviewTime,
   SalaryRange,
+  SitioAttendance,
   Source,
   Stage,
   StageMovement,
@@ -85,6 +86,7 @@ const MERCH_TABLES = {
 const PAGOS_TABLE = 'tblX3EuRiGsY72tSS';
 const RHE_TABLE = 'tblzGSgMmOXBUEdA1';
 const BIENESTAR_EXAMS_TABLE = 'tbl8TGQOE2JAR0c28';
+const SITIOS_ASISTENCIA_TABLE = 'tbleLMLKC6Xti4AHl';
 const PARTICIPATION_CHOICES = [
   'Participo',
   'No Participo',
@@ -1070,7 +1072,8 @@ export class AirtableRepository implements Repository {
     if (!participation) return fields;
     for (const [eid, status] of Object.entries(participation)) {
       const col = idToName.get(eid);
-      if (col) fields[col] = status;
+      // '' (o vacío) limpia la celda (sin marca) en lugar de escribir un estado.
+      if (col) fields[col] = status || null;
     }
     return fields;
   }
@@ -1488,6 +1491,15 @@ export class AirtableRepository implements Repository {
         scheduledAt = undefined;
       }
     }
+    let paidAt: Record<string, string> | undefined;
+    const rawPaid = str(f, 'Pago Real Fechas');
+    if (rawPaid) {
+      try {
+        paidAt = JSON.parse(rawPaid);
+      } catch {
+        paidAt = undefined;
+      }
+    }
     return {
       id: r.id,
       name: str(f, 'Nombre de Pago') || '',
@@ -1497,6 +1509,7 @@ export class AirtableRepository implements Repository {
       paymentDate: str(f, 'Fecha de Pago'),
       status,
       scheduledAt,
+      paidAt,
     };
   }
 
@@ -1518,6 +1531,9 @@ export class AirtableRepository implements Repository {
       f['Programado Fechas'] = d.scheduledAt
         ? JSON.stringify(d.scheduledAt)
         : null;
+    }
+    if (d.paidAt !== undefined) {
+      f['Pago Real Fechas'] = d.paidAt ? JSON.stringify(d.paidAt) : null;
     }
     return f;
   }
@@ -1559,6 +1575,24 @@ export class AirtableRepository implements Repository {
       const v = str(f, m.label);
       if (v) status[m.key] = v;
     }
+    let scheduledAt: Record<string, string> | undefined;
+    const rawSched = str(f, 'Programado Fechas');
+    if (rawSched) {
+      try {
+        scheduledAt = JSON.parse(rawSched);
+      } catch {
+        scheduledAt = undefined;
+      }
+    }
+    let paidAt: Record<string, string> | undefined;
+    const rawPaid = str(f, 'Pago Real Fechas');
+    if (rawPaid) {
+      try {
+        paidAt = JSON.parse(rawPaid);
+      } catch {
+        paidAt = undefined;
+      }
+    }
     return {
       id: r.id,
       person: str(f, 'Persona') || '',
@@ -1569,6 +1603,8 @@ export class AirtableRepository implements Repository {
       entity: str(f, 'Entidad'),
       paymentDate: str(f, 'Fecha de Pago'),
       status,
+      scheduledAt,
+      paidAt,
     };
   }
 
@@ -1587,6 +1623,12 @@ export class AirtableRepository implements Repository {
         const label = byKey.get(key as any);
         if (label) f[label] = val ?? null;
       }
+    }
+    if (d.scheduledAt !== undefined) {
+      f['Programado Fechas'] = d.scheduledAt ? JSON.stringify(d.scheduledAt) : null;
+    }
+    if (d.paidAt !== undefined) {
+      f['Pago Real Fechas'] = d.paidAt ? JSON.stringify(d.paidAt) : null;
     }
     return f;
   }
@@ -1615,6 +1657,66 @@ export class AirtableRepository implements Repository {
 
   async deleteRheEntry(id: string): Promise<void> {
     await this.base(RHE_TABLE).destroy(id);
+  }
+
+  // ---- Sitios: asistencia (Llegó / No llegó) por reserva ----
+  private attendanceFromRecord(r: Airtable.Record<FieldSet>): SitioAttendance {
+    const f = r.fields;
+    return {
+      id: r.id,
+      reservationId: str(f, 'Reserva ID') || '',
+      date: str(f, 'Fecha'),
+      person: str(f, 'Persona'),
+      desk: str(f, 'Escritorio'),
+      floor: typeof f['Piso'] === 'number' ? (f['Piso'] as number) : undefined,
+      status: (str(f, 'Estado') as SitioAttendance['status']) || 'Llegó',
+    };
+  }
+
+  async listSitioAttendance(): Promise<SitioAttendance[]> {
+    const records = await this.selectAll(SITIOS_ASISTENCIA_TABLE);
+    return records
+      .map((r) => this.attendanceFromRecord(r))
+      .filter((a) => a.reservationId);
+  }
+
+  async setSitioAttendance(
+    data: Omit<SitioAttendance, 'id' | 'status'> & {
+      status: SitioAttendance['status'] | null;
+    },
+  ): Promise<SitioAttendance | null> {
+    // Buscar registro existente por Reserva ID.
+    const existing = (await this.base(SITIOS_ASISTENCIA_TABLE)
+      .select({
+        filterByFormula: `{Reserva ID} = '${data.reservationId.replace(/'/g, "\\'")}'`,
+        maxRecords: 1,
+      })
+      .firstPage()) as unknown as Airtable.Record<FieldSet>[];
+    const current = existing[0];
+
+    // status null/'' => borrar la marca.
+    if (!data.status) {
+      if (current) await this.base(SITIOS_ASISTENCIA_TABLE).destroy(current.id);
+      return null;
+    }
+
+    const fields: Record<string, any> = {
+      'Reserva ID': data.reservationId,
+      Fecha: data.date ?? null,
+      Persona: data.person ?? null,
+      Escritorio: data.desk ?? null,
+      Piso: typeof data.floor === 'number' ? data.floor : null,
+      Estado: data.status,
+    };
+
+    const r = current
+      ? ((await this.base(SITIOS_ASISTENCIA_TABLE).update(current.id, fields as any, {
+          typecast: true,
+        })) as unknown as Airtable.Record<FieldSet>)
+      : ((await this.base(SITIOS_ASISTENCIA_TABLE).create(fields as any, {
+          typecast: true,
+        })) as unknown as Airtable.Record<FieldSet>);
+    return this.attendanceFromRecord(r);
   }
 
   // Tipo de producto: catálogo fuera de Airtable — delega a local.

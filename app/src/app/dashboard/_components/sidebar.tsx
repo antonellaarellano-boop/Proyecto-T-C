@@ -8,7 +8,6 @@ import {
   LayoutDashboard,
   Users,
   Briefcase,
-  BarChart3,
   ShieldCheck,
   History,
   Settings,
@@ -20,13 +19,12 @@ import {
   Megaphone,
   Clock,
   CalendarHeart,
-  Package,
-  Boxes,
-  Layers,
   HeartPulse,
   Wallet,
   Receipt,
   Coins,
+  Building2,
+  Dices,
   ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -50,19 +48,10 @@ const navItems: NavItem[] = [
   { href: '/dashboard/fuentes', label: 'Fuentes', icon: Megaphone, section: 'Reclutamiento' },
   { href: '/dashboard/rango-salarial', label: 'Rango salarial', icon: DollarSign, section: 'Reclutamiento' },
   { href: '/dashboard/tiempo-revision', label: 'Tiempo de revisión', icon: Clock, section: 'Reclutamiento' },
-  { href: '/dashboard/reportes', label: 'Reportes', icon: BarChart3, section: 'Reclutamiento' },
-
-  // Colaboradores
-  { href: '/dashboard/colaboradores', label: 'Datos', icon: Users, section: 'Colaboradores' },
 
   // Engagement & Cultura
   { href: '/dashboard/engagement', label: 'Eventos', icon: CalendarHeart, section: 'Engagement' },
-  { href: '/dashboard/engagement/gastos', label: 'Gastos por evento', icon: Coins, section: 'Engagement' },
-
-  // Merch
-  { href: '/dashboard/merch', label: 'Órdenes de compra', icon: Package, section: 'Merch' },
-  { href: '/dashboard/merch/usos', label: 'Usos', icon: Boxes, section: 'Merch' },
-  { href: '/dashboard/merch/stock', label: 'Stock', icon: Layers, section: 'Merch' },
+  { href: '/dashboard/engagement/gastos', label: 'Gastos por actividades del mes', icon: Coins, section: 'Engagement' },
 
   // Bienestar & Salud
   { href: '/dashboard/bienestar', label: 'Exámenes médicos', icon: HeartPulse, section: 'Bienestar & Salud' },
@@ -70,6 +59,16 @@ const navItems: NavItem[] = [
   // Pagos
   { href: '/dashboard/pagos', label: 'Pagos fijos', icon: Wallet, section: 'Pagos' },
   { href: '/dashboard/pagos/rhe', label: 'RHE', icon: Receipt, section: 'Pagos' },
+
+  // Sitios — datos en vivo de reserva de escritorios (Desk Buddy / Supabase)
+  { href: '/dashboard/sitios', label: 'Sitios', icon: Building2, section: 'Sitios' },
+  { href: '/dashboard/sitios/anteriores', label: 'Reservas anteriores', icon: History, section: 'Sitios' },
+
+  // Juegos de mesa — datos en vivo de reserva de juegos de la oficina (Supabase)
+  { href: '/dashboard/juegos', label: 'Reservas de juegos', icon: Dices, section: 'Juegos de mesa' },
+
+  // Colaboradores (último módulo antes de Administración)
+  { href: '/dashboard/colaboradores', label: 'Datos', icon: Users, section: 'Colaboradores' },
 
   // Talento & Desarrollo (Próximamente)
   // { href: '/dashboard/onboarding', label: 'Onboarding', icon: CheckCircle2, section: 'Talento & Desarrollo' },

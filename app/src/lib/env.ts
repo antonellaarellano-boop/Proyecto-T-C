@@ -49,4 +49,26 @@ export const env = {
     name: process.env.NEXT_PUBLIC_APP_NAME || 'Baldecash Talento & Cultura',
     url: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
   },
+  // "Sitios" — datos en vivo del proyecto Supabase de Desk Buddy (reserva de
+  // escritorios). Solo lectura. La URL y la anon key son públicas; el email y
+  // password son de un usuario dedicado de solo lectura y viven solo en server.
+  sitios: {
+    url: process.env.SITIOS_SUPABASE_URL || '',
+    anonKey: process.env.SITIOS_SUPABASE_ANON_KEY || '',
+    email: process.env.SITIOS_SUPABASE_EMAIL || '',
+    password: process.env.SITIOS_SUPABASE_PASSWORD || '',
+    get enabled() {
+      return Boolean(this.url && this.anonKey && this.email && this.password);
+    },
+  },
+  // "Juegos de mesa" — datos en vivo del proyecto Supabase de la app de reserva
+  // de juegos de mesa de la oficina. Solo lectura. El RLS de SELECT es público,
+  // así que la anon/publishable key basta (no hace falta usuario de servicio).
+  juegos: {
+    url: process.env.JUEGOS_SUPABASE_URL || '',
+    anonKey: process.env.JUEGOS_SUPABASE_ANON_KEY || '',
+    get enabled() {
+      return Boolean(this.url && this.anonKey);
+    },
+  },
 };
