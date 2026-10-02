@@ -3,6 +3,9 @@ import { getRepo } from '@/lib/data/repository';
 import { STAGES, type Stage } from '@/lib/types';
 
 export const runtime = 'nodejs';
+// Los KPIs se calculan sobre datos vivos de Airtable. Sin force-dynamic, Next.js
+// prerenderiza la respuesta en build time y el Resumen queda con cifras congeladas.
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const repo = await getRepo();

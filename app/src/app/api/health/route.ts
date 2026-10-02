@@ -3,6 +3,9 @@ import { getRepo } from '@/lib/data/repository';
 import { isKvAvailable } from '@/lib/data/user-kv-store';
 
 export const runtime = 'nodejs';
+// Sin esto Next.js prerenderiza la respuesta en build time y el endpoint queda
+// congelado: reportaria el origen de datos de la compilacion, no el real.
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const repo = await getRepo();

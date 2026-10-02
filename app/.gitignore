@@ -11,3 +11,12 @@ build/
 .idea/
 coverage/
 next-env.d.ts
+
+# Artefactos de la CLI de Vercel
+.vercel
+.vercel-check.env
+
+# .env* lo agrego la CLI de Vercel, pero tapaba .env.example, que SI debe
+# versionarse (es la plantilla y el checklist de variables). Los .env reales
+# ya quedan cubiertos por las reglas de arriba.
+!.env.example
