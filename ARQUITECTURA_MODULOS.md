@@ -260,15 +260,20 @@ ve la contraseña ni el refresh token.
 | **Root Directory** | `app` — el `package.json` no está en la raíz del repo |
 | **Persistencia** | Upstash Redis `upstash-kv-indigo-castle`, conectado |
 
-**Deploy automático** vía [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml): cada
-push a `main` hace `vercel pull` + `vercel build` + `vercel deploy --prebuilt --prod`, y termina
-con un chequeo de humo contra `/api/health`. Requiere tres secrets en el repo: `VERCEL_TOKEN`,
-`VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
+**Deploy automático** mediante la **integración nativa de Vercel con GitHub**: el repositorio
+está conectado al proyecto, así que cada push a `main` dispara un build y un deploy a producción
+sin intervención. No usa tokens ni secrets.
 
-> Se usa un workflow en vez de la integración nativa de Vercel con GitHub porque esta última
-> exige una *Login Connection* en la cuenta de Vercel más permisos de la GitHub App sobre este
-> repositorio, que al momento de escribir esto no estaban resueltos. Si alguna vez se habilitan,
-> el workflow puede retirarse.
+> ⚠️ **El Root Directory del proyecto debe ser `app`.** El `package.json` no está en la raíz del
+> repositorio. Si queda en `.`, los builds disparados por Git fallan porque no encuentran el
+> proyecto. Se ajusta en *Project Settings → General → Root Directory*; no hay comando de CLI
+> para cambiarlo.
+
+También existe [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) como respaldo
+**manual** (`workflow_dispatch`). Se escribió cuando la integración nativa todavía no estaba
+disponible y el disparo automático quedó desactivado a propósito: fallaba en cada intento, y
+diagnosticarlo requería leer los logs de Actions. Si la integración nativa cubre la necesidad,
+este archivo puede eliminarse.
 
 **Variables de entorno:** las ~26 de producción viven en Vercel, no en el repo. `vercel pull`
 las baja durante el build, por eso el workflow no contiene ninguna credencial.
