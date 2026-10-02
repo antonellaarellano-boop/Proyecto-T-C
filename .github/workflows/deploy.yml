@@ -19,9 +19,15 @@ name: Deploy a Vercel
 # proyecto de Vercel y las toma el build remoto. Aca no va ninguna credencial
 # de la aplicacion.
 
+# Solo manual, a proposito. El disparo automatico en push quedo desactivado
+# porque fallaba en cada intento y generaba correos de error. La via recomendada
+# para el deploy automatico es la integracion nativa de Vercel con GitHub, que
+# no necesita tokens ni secrets (ver seccion 8 de ARQUITECTURA_MODULOS.md).
+#
+# Para reactivar el disparo automatico, descomentar estas dos lineas:
+#   push:
+#     branches: [main]
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
