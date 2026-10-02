@@ -16,7 +16,9 @@ next-env.d.ts
 .vercel
 .vercel-check.env
 
-# .env* lo agrego la CLI de Vercel, pero tapaba .env.example, que SI debe
-# versionarse (es la plantilla y el checklist de variables). Los .env reales
-# ya quedan cubiertos por las reglas de arriba.
+# La CLI de Vercel agrega `.env*` sola cada vez que corre. El orden importa:
+# en gitignore gana la ULTIMA regla que matchea, asi que la excepcion de
+# .env.example tiene que ir despues. Si la CLI vuelve a anexar `.env*` al final,
+# hay que reubicar esta excepcion debajo otra vez.
+.env*
 !.env.example
