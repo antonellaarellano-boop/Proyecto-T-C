@@ -20,6 +20,29 @@ function readDataSource(): DataSource {
   return 'mock';
 }
 
+// Secreto de firma JWT. En desarrollo hay un fallback para no frenar el trabajo
+// local, pero en produccion DEBE venir de la variable de entorno: si no, las
+// sesiones se firmarian con un secreto que esta publicado en el repositorio y
+// cualquiera podria falsificar una sesion de admin.
+//
+// Se evalua de forma perezosa (getter) y no al cargar el modulo, para que
+// `next build` no falle cuando la variable todavia no esta disponible.
+const AUTH_SECRET_DEV_FALLBACK =
+  'dev-only-secret-please-change-me-in-production-environment-now';
+
+function readAuthSecret(): string {
+  const secret = process.env.AUTH_SECRET;
+  if (secret && secret.length >= 32) return secret;
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      '[env] AUTH_SECRET ausente o de menos de 32 caracteres en produccion. ' +
+        'Configurala en las variables de entorno del proyecto antes de desplegar.',
+    );
+  }
+  return secret || AUTH_SECRET_DEV_FALLBACK;
+}
+
 export const env = {
   dataSource: readDataSource(),
   airtable: {
@@ -36,9 +59,9 @@ export const env = {
     },
   },
   auth: {
-    secret:
-      process.env.AUTH_SECRET ||
-      'dev-only-secret-please-change-me-in-production-environment-now',
+    get secret() {
+      return readAuthSecret();
+    },
     sessionTtl: Number(process.env.AUTH_SESSION_TTL || 28800),
   },
   admin: {

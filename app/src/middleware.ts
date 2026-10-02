@@ -17,12 +17,21 @@ function isPublic(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
 }
 
+// Mismo criterio que lib/env.ts, repetido aca a proposito: el middleware corre
+// en el runtime Edge y no conviene arrastrar el modulo de entorno completo.
+// En produccion AUTH_SECRET es obligatorio; en dev hay fallback.
+function authSecret(): string {
+  const secret = process.env.AUTH_SECRET;
+  if (secret && secret.length >= 32) return secret;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('[middleware] AUTH_SECRET ausente o demasiado corto en produccion.');
+  }
+  return secret || 'dev-only-secret-please-change-me-in-production-environment-now';
+}
+
 async function verify(token: string) {
   try {
-    const secret = new TextEncoder().encode(
-      process.env.AUTH_SECRET ||
-        'dev-only-secret-please-change-me-in-production-environment-now',
-    );
+    const secret = new TextEncoder().encode(authSecret());
     const { payload } = await jwtVerify(token, secret, { algorithms: ['HS256'] });
     return payload as { sub: string; role: string };
   } catch {
