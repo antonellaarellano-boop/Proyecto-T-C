@@ -264,10 +264,11 @@ ve la contraseña ni el refresh token.
 está conectado al proyecto, así que cada push a `main` dispara un build y un deploy a producción
 sin intervención. No usa tokens ni secrets.
 
-> ⚠️ **El Root Directory del proyecto debe ser `app`.** El `package.json` no está en la raíz del
-> repositorio. Si queda en `.`, los builds disparados por Git fallan porque no encuentran el
-> proyecto. Se ajusta en *Project Settings → General → Root Directory*; no hay comando de CLI
-> para cambiarlo.
+> **Root Directory = `app`** (ya configurado). El `package.json` no está en la raíz del
+> repositorio, así que este ajuste es imprescindible: con `.`, los builds disparados por Git
+> fallan con `Module not found: Can't resolve '@/components/...'`, porque el alias `@/*` de
+> `app/tsconfig.json` no resuelve desde la raíz. Se cambia en *Project Settings → Build and
+> Deployment → Root Directory*; no hay comando de CLI para esto.
 
 También existe [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) como respaldo
 **manual** (`workflow_dispatch`). Se escribió cuando la integración nativa todavía no estaba
