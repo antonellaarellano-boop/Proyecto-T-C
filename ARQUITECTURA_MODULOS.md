@@ -8,8 +8,8 @@ endpoints hay, y qué está construido pero todavía no es alcanzable desde la U
 > por campo, decisiones técnicas y troubleshooting. Si los dos se contradicen, manda el
 > código — y corregí ambos.
 
-Última revisión del mapa: **2 de octubre de 2026** · Último commit mapeado:
-`feat: módulo Juegos de mesa (Supabase) + Sitios (walk-ins y ocupación por piso)`
+Última revisión del mapa: **2 de octubre de 2026**, tras publicar el sistema en producción
+(ver sección 8).
 
 ---
 
@@ -99,6 +99,8 @@ de [`airtable.ts`](app/src/lib/data/airtable.ts) (línea ~100).
 
 ```
 SISTEMA T&C/
+├── .github/workflows/
+│   └── deploy.yml                deploy automático a Vercel en push a main
 ├── app/                          ← la aplicación Next.js
 │   ├── src/
 │   │   ├── app/
@@ -210,10 +212,16 @@ Sesión **JWT HS256** firmada con `jose`, guardada en cookie httpOnly `bcrt_sess
 
 ## 6. Puesta en marcha local
 
+> ⚠️ **La ruta del proyecto no puede contener `&`.** El `&` de la carpeta "SISTEMA T&C" rompe
+> los scripts *postinstall* de npm en Windows: la ruta se corta ahí y `npm install` falla con
+> `Cannot find module ...\napi-postinstall\lib\cli.js`. Antes de trabajar en local, mové el
+> proyecto a una ruta sin `&` ni espacios, por ejemplo `C:\dev\sistema-talento-y-cultura`.
+> No afecta a Vercel, que compila en Linux.
+
 ```powershell
 cd "app"
 npm install              # node_modules NO está en el repo
-Copy-Item .env.example .env.local   # y completar — ver sección 8
+Copy-Item .env.example .env.local   # y completar — ver seccion 7
 npm run dev              # http://localhost:3000
 ```
 
@@ -242,33 +250,77 @@ ve la contraseña ni el refresh token.
 
 ---
 
-## 8. Deuda técnica conocida
+## 8. Despliegue
 
-Ordenada por lo que más conviene atacar primero.
+| | |
+|---|---|
+| **Producción** | https://proyecto-t-c.vercel.app |
+| **Repositorio** | https://github.com/antonellaarellano-boop/Proyecto-T-C |
+| **Proyecto Vercel** | `antonellaarellano-6098s-projects/proyecto-t-c` |
+| **Root Directory** | `app` — el `package.json` no está en la raíz del repo |
+| **Persistencia** | Upstash Redis `upstash-kv-indigo-castle`, conectado |
 
-1. **`.env.example` desactualizado.** Le faltan ~10 variables que el código sí lee
-   (`AIRTABLE_TABLE_STAGES`, `..._SALARY_RANGE`, `..._REVIEW_TIME`, los cuatro `SITIOS_*`,
-   los dos `JUEGOS_*`, `KV_REST_API_*`) y lista tres que ya nadie usa (`INTERVIEWS`,
-   `USERS`, `ACTIVITY`). Hoy no sirve como plantilla.
-2. **`AUTH_SECRET` tiene un fallback hardcodeado** en [`env.ts:41`](app/src/lib/env.ts) y
-   [`middleware.ts:24`](app/src/middleware.ts). Si la variable falta, la app no falla: firma
-   sesiones con un secreto que está en el repositorio. Conviene lanzar un error cuando
-   `NODE_ENV=production`. *(Hoy no hay deploy, así que no es urgente — sí antes de publicar.)*
-3. **Sin rate limiting en `/api/auth/login`** — expuesto a fuerza bruta.
-4. **`bcrypt.compareSync`** en [`login/route.ts:30`](app/src/app/api/auth/login/route.ts)
-   bloquea el event loop. Cambiar a la variante asíncrona.
-5. **`notifications` y `activity` viven solo en memoria** — se pierden en cada reinicio.
-   Migrarlas a Redis como ya se hizo con usuarios.
-6. **`charts.tsx` de 77 KB** en un solo archivo.
-7. **Cuenta de servicio de Sitios** — crear una cuenta dedicada con las edge functions
-   `register-user` / `admin-create-user` del proyecto de origen.
-8. **Sin tests.** No hay suite; lo mínimo sería E2E de login y de un CRUD.
-9. **Filas fantasma en Airtable** (Rango salarial, Fuentes) — el código las filtra, pero
-   ensucian la vista nativa.
+**Deploy automático** vía [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml): cada
+push a `main` hace `vercel pull` + `vercel build` + `vercel deploy --prebuilt --prod`, y termina
+con un chequeo de humo contra `/api/health`. Requiere tres secrets en el repo: `VERCEL_TOKEN`,
+`VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
+
+> Se usa un workflow en vez de la integración nativa de Vercel con GitHub porque esta última
+> exige una *Login Connection* en la cuenta de Vercel más permisos de la GitHub App sobre este
+> repositorio, que al momento de escribir esto no estaban resueltos. Si alguna vez se habilitan,
+> el workflow puede retirarse.
+
+**Variables de entorno:** las ~26 de producción viven en Vercel, no en el repo. `vercel pull`
+las baja durante el build, por eso el workflow no contiene ninguna credencial.
+
+> ⚠️ **Cuidado al cargar variables desde PowerShell.** Al enviar un valor por pipe a un proceso
+> nativo, PowerShell 5.1 antepone un BOM UTF-8. Eso corrompe el valor en silencio:
+> `DATA_SOURCE` quedaba como `﻿airtable` y la app caía a modo mock sin dar ningún error.
+> Ajustar `$OutputEncoding` no alcanza. Hay que escribir el valor a un archivo sin BOM con
+> `[System.IO.File]::WriteAllText` + `UTF8Encoding($false)` y alimentar la CLI con redirección
+> de entrada de `cmd`.
+
+**Deployment Protection está activa**: solo accede quien tenga sesión en esa cuenta de Vercel.
+Para abrirlo al equipo hay que desactivarla o invitar a las personas.
 
 ---
 
-## 9. Pendientes del backlog
+## 9. Deuda técnica conocida
+
+Ordenada por lo que más conviene atacar primero.
+
+1. **Sin rate limiting en `/api/auth/login`** — expuesto a fuerza bruta. Es lo más urgente
+   ahora que la app está publicada.
+2. **`bcrypt.compareSync`** en [`login/route.ts`](app/src/app/api/auth/login/route.ts)
+   bloquea el event loop. Cambiar a la variante asíncrona.
+3. **`notifications` y `activity` viven solo en memoria** — se pierden en cada cold start.
+   Migrarlas a Redis como ya se hizo con usuarios; la infraestructura ya está conectada.
+4. **`charts.tsx` de 77 KB** en un solo archivo.
+5. **Cuenta de servicio de Sitios** — crear una cuenta dedicada con las edge functions
+   `register-user` / `admin-create-user` del proyecto de origen, en lugar de usar una
+   cuenta personal.
+6. **Sin tests.** No hay suite; lo mínimo sería E2E de login y de un CRUD.
+7. **Filas fantasma en Airtable** (Rango salarial, Fuentes) — el código las filtra, pero
+   ensucian la vista nativa.
+8. **Next.js en la línea 14.x.** Hoy en 14.2.35 (parcheada). Migrar a 15 o 16 es una tarea
+   mayor que conviene planificar aparte.
+
+### Resuelto recientemente
+
+- ✅ **`AUTH_SECRET` ya es obligatorio en producción.** Antes, si faltaba la variable, la app
+  firmaba sesiones con un secreto publicado en el repositorio. El chequeo es perezoso para no
+  romper `next build`.
+- ✅ **`/api/health` y `/api/dashboard` ya son dinámicas.** Eran estáticas: Next.js las
+  prerenderizaba en build time y servía esa respuesta congelada. En `/api/dashboard` eso
+  significaba KPIs del momento de la compilación para todos los usuarios.
+- ✅ **`.env.example` actualizado** — sirve como plantilla real y como checklist de Vercel.
+- ✅ **Next.js 14.2.5 → 14.2.35**, por vulnerabilidad conocida.
+- ✅ **Usuarios persistidos en Redis** — antes vivían en memoria y desaparecían en cada
+  cold start.
+
+---
+
+## 10. Pendientes del backlog
 
 **Vistas nuevas posibles:** quality of hire desde Ingresos · análisis de cuellos de botella
 por etapa · timeline cronológico del candidato · scorecard por Hiring Manager · Kanban con
@@ -283,14 +335,18 @@ Planes de Carrera, Compensación & Beneficios, Cumplimiento. Los tres primeros y
 
 ---
 
-## 10. Notas del entorno de trabajo
+## 11. Notas del entorno de trabajo
 
+- **La ruta actual del proyecto contiene `&`** y eso rompe `npm install` en Windows. Ver el
+  aviso en la sección 6. Es lo primero a resolver para trabajar en local.
 - **Git está instalado pero no en el PATH.** Vive en `C:\Program Files\Git\cmd\git.exe`
   (versión 2.56.0). Para usarlo en una terminal nueva:
   `$env:Path += ";C:\Program Files\Git\cmd"`. Conviene agregarlo al PATH del sistema de
   forma permanente. **No hay GitHub CLI (`gh`)** instalado.
-- **No hay deploy en Vercel** activo.
-- `.claude/settings.json` tiene permisos apuntando a `C:/dev/sistema-talento-y-cultura/`,
-  una ruta que ya no existe.
-- El nombre del repositorio remoto (*Dashboard-reclutamiento*) quedó chico frente al alcance
-  real del sistema.
+- **Vercel CLI instalada** globalmente (`vercel`, v62).
+- **Remotos de git:** `origin` apunta al repositorio actual; `mariana-anterior` conserva el
+  original (`marianagomez-crypto/Dashboard-reclutamiento`) por si hiciera falta.
+- **`.claude/` está fuera del repositorio** a propósito: es configuración de cada máquina.
+- **La CLI de Vercel reescribe `app/.gitignore`** cada vez que corre, anexando `.env*` al
+  final. Como en gitignore gana la última regla, eso anula la excepción de `.env.example`.
+  Si volvés a ver `.env.example` ignorado, reubicá el `!.env.example` debajo del `.env*`.
