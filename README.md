@@ -46,6 +46,7 @@ Integración nativa con Airtable (fuente de verdad) · Auth JWT con roles · Per
 24. [Roadmap y pendientes](#-roadmap-y-pendientes)
 25. [Módulos de Talento & Cultura (Colaboradores · Engagement · Merch · Bienestar)](#-módulos-de-talento--cultura)
 26. [Pagos, Gastos por evento y mejoras recientes](#-pagos-gastos-por-evento-y-mejoras-recientes)
+27. [Integraciones Supabase en vivo (Sitios · Juegos de mesa)](#-integraciones-supabase-en-vivo-sitios--juegos-de-mesa)
 
 ---
 
@@ -588,6 +589,21 @@ Estas variables se **auto-inyectan en Vercel** al conectar un Redis vía Marketp
 | `REDIS_URL` | URL Redis alternativa |
 
 > El código también acepta `UPSTASH_REDIS_REST_URL/TOKEN` (nombres nativos de Upstash) como fallback.
+
+### Integraciones Supabase en vivo (opcionales, server-only)
+
+Alimentan los apartados **Sitios** y **Juegos de mesa** (sección 27). Si faltan, cada módulo muestra su pantalla "no configurado" y el resto de la app funciona igual. Ver [`env.ts`](app/src/lib/env.ts) (`env.sitios`, `env.juegos`).
+
+| Variable | Módulo | Descripción |
+|---|---|---|
+| `SITIOS_SUPABASE_URL` | Sitios | URL del proyecto Supabase de Desk Buddy |
+| `SITIOS_SUPABASE_ANON_KEY` | Sitios | Anon/publishable key |
+| `SITIOS_SUPABASE_EMAIL` | Sitios | Correo del usuario dedicado de solo lectura (RLS exige auth) |
+| `SITIOS_SUPABASE_PASSWORD` | Sitios | Password de ese usuario — **nunca llega al navegador** |
+| `JUEGOS_SUPABASE_URL` | Juegos | URL del proyecto Supabase de reserva de juegos |
+| `JUEGOS_SUPABASE_ANON_KEY` | Juegos | Anon/publishable key (RLS de SELECT público → basta esta) |
+
+> `env.sitios.enabled` requiere las **4** variables; `env.juegos.enabled` requiere solo URL + anon key.
 
 ### Nombres de tablas (override opcional)
 
@@ -1401,6 +1417,8 @@ Airtable tiene la opción exactamente así. Si el código usa `"Entrevista Líde
 | **Engagement** | Eventos, Gastos por evento | `/dashboard/engagement`, `/dashboard/engagement/gastos` |
 | **Merch** | Órdenes de compra, Usos, Stock | `/dashboard/merch`, `/dashboard/merch/usos`, `/dashboard/merch/stock` |
 | **Bienestar & Salud** | Exámenes médicos | `/dashboard/bienestar` |
+| **Sitios** | Ocupación de hoy, Reservas anteriores | `/dashboard/sitios`, `/dashboard/sitios/anteriores` |
+| **Juegos de mesa** | Estadísticas de reservas | `/dashboard/juegos` |
 | **Pagos** | Pagos fijos, RHE | `/dashboard/pagos`, `/dashboard/pagos/rhe` |
 | **Administración** | Actividad, Catálogos, Admin, Ajustes | `/dashboard/actividad`, `/dashboard/catalogos`, … |
 
@@ -1768,6 +1786,107 @@ Pagos fijos, RHE y Gastos por evento comparten un patrón de UI:
 
 ---
 
+## 🛰️ Integraciones Supabase en vivo (Sitios · Juegos de mesa)
+
+> A diferencia del resto de la plataforma (Airtable + Upstash), estos dos apartados leen **datos en
+> vivo desde proyectos Supabase de terceros** (dos apps independientes de la oficina). Son **solo
+> lectura**: el sistema **nunca escribe** en esos Supabase. Todo el acceso a Supabase es
+> **server-only** (`import 'server-only'`); las credenciales viven en `app/.env.local` (gitignored) y
+> nunca se exponen al navegador. Si un módulo no está configurado, muestra su pantalla
+> `not-configured.tsx` y el resto de la app sigue funcionando.
+
+### Comparación rápida
+
+| | **Sitios** (Desk Buddy) | **Juegos de mesa** |
+|---|---|---|
+| Ruta | [`/dashboard/sitios`](app/src/app/dashboard/sitios) (+ `/anteriores`) | [`/dashboard/juegos`](app/src/app/dashboard/juegos) |
+| App de origen | Desk Buddy (reserva de escritorios) | App de reserva de juegos de la oficina |
+| RLS | `TO authenticated` → **requiere login** | SELECT **público** → basta la anon key |
+| Auth al Supabase | Usuario dedicado de solo lectura + login de 2 pasos | Ninguno (anon/publishable key) |
+| Realtime | Token de sesión corto vía server (`realtime.setAuth`) | Anon key directa desde el navegador |
+| Código | `lib/sitios/{client,queries,types}.ts` | `lib/juegos/{client,queries,types}.ts` |
+
+---
+
+### 🖥️ Sitios — ocupación de escritorios (Desk Buddy)
+
+Espejo de solo lectura de **Desk Buddy**, la app de reserva de escritorios. Muestra la ocupación de
+hoy, próximas reservas, bloqueos y el histórico.
+
+**Autenticación de 2 pasos ([`client.ts`](app/src/lib/sitios/client.ts)).** Las políticas RLS de
+Desk Buddy son `TO authenticated`, así que la anon key no basta — el server inicia sesión con un
+**usuario dedicado de solo lectura**. Desk Buddy no usa email real para auth: primero se llama la
+edge function `resolve-login` (mapea el correo → email sintético `dni-<DNI>@deskflow.local`) y
+recién ese email va a `signInWithPassword`. La sesión se **cachea** y se re-loguea con 60 s de
+margen antes de expirar. Si `resolve-login` no existe, cae al identificador original para no romper.
+
+**Realtime sin exponer credenciales.** El navegador necesita autorizar su canal Realtime, pero la
+contraseña jamás debe salir del server. Solución: `/api/sitios/realtime-token` (gated por sesión)
+devuelve un **access token JWT de vida corta** + URL + anon key; el navegador lo usa con
+`realtime.setAuth(token)` para suscribirse a los cambios. Nunca viaja ni la contraseña ni el refresh
+token.
+
+**Snapshot ([`queries.ts`](app/src/lib/sitios/queries.ts)).** `getSitiosSnapshot()` lee en paralelo
+`floors`, `desks`, `profiles`, `reservations` (hoy → +14 días), `desk_blocks` y `worker_statuses`, y
+los enriquece (reserva → nombre de persona, equipo, número de escritorio, piso).
+- **Ocupación de hoy = reservados ∪ bloqueados**, replicando la fórmula de Desk Buddy
+  (`isDeskBlockedOnDate`: bloqueos por fecha específica, o por día de semana ISO, persistentes o de
+  la semana en curso). Los segmentos por piso evitan doble conteo:
+  `reservedToday + blockedToday = occupiedToday` (tipo `FloorOccupancy`).
+- KPIs: total de escritorios, reservados hoy, libres hoy, `occupancyPct`, total de personas.
+- `getSitiosPastReservations()` trae el histórico (`date < hoy`, más recientes primero) para la
+  vista **Reservas anteriores**.
+
+**Walk-ins — dato PROPIO del sistema (nunca toca Desk Buddy).** "Vinieron sin reservar" es
+información que Desk Buddy no tiene, así que se guarda **solo localmente** (KV/memoria) en
+[`sitios-walkins-store.ts`](app/src/lib/data/sitios-walkins-store.ts), tipo `SitioWalkin`.
+- API: `/api/sitios/walkins` (GET/POST) + `/api/sitios/walkins/[id]` (DELETE). **recruiter+admin**
+  mutan; **viewer** es read-only (403 al escribir).
+- UI: en la página principal, tarjeta **"Vinieron sin reservar · hoy"** (form nombre + piso + lista
+  con borrar); en **Reservas anteriores**, gráfico `WalkinsByPersonChart` filtrado por el mes
+  elegido, junto al de no-shows (`NoShowByPersonChart`).
+
+> **Cuenta de servicio:** hoy Sitios inicia sesión con la cuenta personal de Mariana usada como
+> cuenta de servicio de solo lectura. **Si cambia su contraseña, Sitios deja de leer** — actualizar
+> `SITIOS_SUPABASE_PASSWORD` en `app/.env.local` y reiniciar el server. Las edge functions
+> `register-user` / `admin-create-user` del proyecto permiten crear una cuenta dedicada en el futuro.
+
+---
+
+### 🎲 Juegos de mesa — estadísticas de reservas
+
+Estadísticas en vivo de la app de reserva de juegos de mesa de la oficina. **Mucho más simple que
+Sitios:** el RLS de SELECT es **público**, así que basta la **anon/publishable key**
+(`sb_publishable_...`) — sin usuario de servicio, sin login, sin `resolve-login`
+([`client.ts`](app/src/lib/juegos/client.ts)).
+
+**Realtime.** Con RLS público la anon key basta para suscribirse a `postgres_changes` de `reservas`;
+`/api/juegos/realtime-config` (gated por sesión) expone URL + anon key y el navegador abre su propio
+canal. No hay token de sesión corto como en Sitios.
+
+**Tabla `reservas`** (esquema `public`): `id`, `game_id` (`uno`, `uno-no-mercy`, `virus`, `basta`,
+`set-100`…), `day_key` (`hoy`/`mañana`), `date_iso` (date), `slot` (`12-13` → se formatea a
+`12:00–13:00`), `colaborador`, `created_at`.
+
+**Snapshot ([`queries.ts`](app/src/lib/juegos/queries.ts)).** `getJuegosSnapshot()` lee todas las
+reservas y las agrega para la UI:
+- **Por mes** (`byMonth`): total de reservas + colaboradores distintos.
+- **Por juego** (`byGame`, desc) y **por horario** (`bySlot`, orden cronológico).
+- KPIs: total de reservas, personas distintas (histórico), juego más reservado, horario más
+  reservado.
+- Nombres legibles y formato de horarios en `prettyGameName` / `prettySlot` — un `game_id`
+  desconocido se "prettifica" solo.
+- Gráficos en la UI: `TopGamesChart`, `ReservasByMonthChart`, `TopPeopleChart`, `TopSlotsChart`.
+
+**"Eliminar" = ocultación SOLO del sistema (nunca borra en Supabase).** El botón de eliminar en
+"Reservas recientes" **no toca la app de origen**: es un store local de IDs ocultos
+([`juegos-hidden-store.ts`](app/src/lib/data/juegos-hidden-store.ts), KV/memoria) que
+`getJuegosSnapshot` filtra de la tabla **y de todas las stats**. Es **reversible**: la API
+`/api/juegos/hidden` acepta `hidden:true` (oculta) / `hidden:false` (restaura); **recruiter+admin**,
+viewer 403. En UI hay confirmación + toast "Deshacer".
+
+---
+
 ## 👥 Créditos
 
 Construido para **Baldecash** por el equipo de desarrollo interno.
@@ -1780,6 +1899,7 @@ Tecnologías de terceros usadas (todas open source):
 - Framer Motion
 - Recharts
 - Airtable SDK
+- @supabase/supabase-js (Sitios · Juegos, solo lectura)
 - jose / bcryptjs / zod
 - @upstash/redis
 - Lucide Icons

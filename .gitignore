@@ -32,6 +32,9 @@ Thumbs.db
 .idea/
 *.swp
 
+# Config local de Claude Code — es de cada maquina, no del proyecto
+.claude/
+
 # Test / coverage
 **/coverage/
 **/.nyc_output/
