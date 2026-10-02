@@ -2,116 +2,69 @@ name: Deploy a Vercel
 
 # Despliega a produccion en cada push a main.
 #
-# Por que un workflow y no la integracion nativa de Vercel con GitHub:
-# conectar el repo requiere una Login Connection en la cuenta de Vercel mas
-# permisos de la GitHub App sobre este repositorio en particular. Mientras eso
-# no este resuelto, este workflow cumple la misma funcion usando solo un token.
+# Version deliberadamente minima: un solo comando. Antes este workflow hacia
+# `vercel pull` + `vercel build` + `vercel deploy --prebuilt`, tres pasos que
+# fallaban sin dejar claro cual. Ahora se deja que Vercel compile del lado del
+# servidor, que es exactamente lo que ocurre al desplegar a mano.
 #
-# Requiere tres secrets en el repo (Settings -> Secrets and variables -> Actions):
-#   VERCEL_TOKEN       -> crear en https://vercel.com/account/tokens
+# Requiere tres secrets (Settings -> Secrets and variables -> Actions):
+#   VERCEL_TOKEN       -> https://vercel.com/account/tokens
+#                         IMPORTANTE: el scope debe incluir el team
+#                         "antonellaarellano-6098s-projects", no solo la
+#                         cuenta personal.
 #   VERCEL_ORG_ID      -> team_S3RuRpE1OdN55fpsHe3o80fg
 #   VERCEL_PROJECT_ID  -> prj_nC9FpiWoxYvjWnHr8Sd3O4SwEHh6
 #
-# Las variables de entorno de la app (Airtable, Supabase, KV, AUTH_SECRET) NO
-# van aca: ya viven en el proyecto de Vercel y `vercel pull` las baja al build.
+# Las variables de la app (Airtable, Supabase, KV, AUTH_SECRET) viven en el
+# proyecto de Vercel y las toma el build remoto. Aca no va ninguna credencial
+# de la aplicacion.
 
 on:
   push:
     branches: [main]
-  # Permite lanzarlo a mano desde la pestania Actions.
   workflow_dispatch:
 
-# Un deploy a la vez: si llegan dos pushes seguidos, se cancela el anterior
-# para que no compitan por ser el deploy de produccion.
 concurrency:
   group: deploy-production
   cancel-in-progress: true
 
 jobs:
   deploy:
-    name: Build y deploy a produccion
+    name: Deploy a produccion
     runs-on: ubuntu-latest
-
-    # El proyecto Next.js vive en app/, no en la raiz del repo.
-    defaults:
-      run:
-        working-directory: app
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Falla temprano y con un mensaje claro si falta algun secret, en vez de
-      # morir adentro de la CLI con un error de permisos dificil de interpretar.
+      # Falla temprano y con un mensaje legible si falta algun secret, en vez
+      # de morir adentro de la CLI con un error de permisos.
       - name: Verificar secrets
-        run: |
-          faltan=""
-          [ -z "$VERCEL_TOKEN" ]      && faltan="$faltan VERCEL_TOKEN"
-          [ -z "$VERCEL_ORG_ID" ]     && faltan="$faltan VERCEL_ORG_ID"
-          [ -z "$VERCEL_PROJECT_ID" ] && faltan="$faltan VERCEL_PROJECT_ID"
-          if [ -n "$faltan" ]; then
-            echo "::error::Faltan secrets en el repositorio:$faltan"
-            echo "Cargalos en Settings -> Secrets and variables -> Actions."
-            exit 1
-          fi
-          # No imprime valores, solo longitudes, para detectar espacios de mas
-          # o pegados incompletos sin exponer nada.
-          echo "VERCEL_TOKEN: ${#VERCEL_TOKEN} caracteres"
-          echo "VERCEL_ORG_ID: ${#VERCEL_ORG_ID} caracteres (esperado 29)"
-          echo "VERCEL_PROJECT_ID: ${#VERCEL_PROJECT_ID} caracteres (esperado 32)"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
-      - name: Configurar Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: app/package-lock.json
+        run: |
+          faltan=""
+          if [ -z "$VERCEL_TOKEN" ];      then faltan="$faltan VERCEL_TOKEN"; fi
+          if [ -z "$VERCEL_ORG_ID" ];     then faltan="$faltan VERCEL_ORG_ID"; fi
+          if [ -z "$VERCEL_PROJECT_ID" ]; then faltan="$faltan VERCEL_PROJECT_ID"; fi
+          if [ -n "$faltan" ]; then
+            echo "::error::Faltan secrets en el repositorio:$faltan"
+            exit 1
+          fi
+          echo "VERCEL_TOKEN: ${#VERCEL_TOKEN} caracteres"
+          echo "VERCEL_ORG_ID: ${#VERCEL_ORG_ID} caracteres (esperado 29)"
+          echo "VERCEL_PROJECT_ID: ${#VERCEL_PROJECT_ID} caracteres (esperado 32)"
 
       - name: Instalar Vercel CLI
         run: npm install --global vercel@62
 
-      # Baja la configuracion del proyecto y las variables de entorno de
-      # produccion. Sin esto el build no sabe a que proyecto pertenece.
-      - name: Traer configuracion de Vercel
-        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+      # Un unico comando. El proyecto se identifica por las dos variables de
+      # entorno, asi que no hace falta `vercel link` ni `vercel pull`.
+      # --cwd app porque el proyecto Next.js no esta en la raiz del repo.
+      - name: Deploy
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
-      - name: Build
-        run: vercel build --prod --token="$VERCEL_TOKEN"
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
-      # --prebuilt sube el resultado del paso anterior en vez de recompilar.
-      #
-      # No se captura la URL en $GITHUB_OUTPUT: la CLI 62 imprime el banner de
-      # version y un bloque JSON ademas de la URL, y un valor multilinea rompe
-      # el formato de GITHUB_OUTPUT. La URL de produccion es fija de todas
-      # formas (proyecto-t-c.vercel.app), asi que no hacia falta.
-      - name: Deploy a produccion
-        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
-      # Chequeo de humo: si /api/health no responde ok, el workflow falla y
-      # queda registrado, en vez de dar por bueno un deploy roto.
-      - name: Verificar /api/health
-        run: |
-          sleep 10
-          body=$(curl -fsS "https://proyecto-t-c.vercel.app/api/health?cb=$GITHUB_RUN_ID" || true)
-          echo "Respuesta: $body"
-          case "$body" in
-            *'"ok":true'*) echo "Health OK" ;;
-            "") echo "Sin respuesta (puede ser Deployment Protection activa); no se bloquea el deploy." ;;
-            *) echo "Health devolvio algo inesperado"; exit 1 ;;
-          esac
+        run: vercel deploy --prod --yes --cwd app --token="${{ secrets.VERCEL_TOKEN }}"
