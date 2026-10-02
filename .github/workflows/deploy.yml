@@ -41,6 +41,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Falla temprano y con un mensaje claro si falta algun secret, en vez de
+      # morir adentro de la CLI con un error de permisos dificil de interpretar.
+      - name: Verificar secrets
+        run: |
+          faltan=""
+          [ -z "$VERCEL_TOKEN" ]      && faltan="$faltan VERCEL_TOKEN"
+          [ -z "$VERCEL_ORG_ID" ]     && faltan="$faltan VERCEL_ORG_ID"
+          [ -z "$VERCEL_PROJECT_ID" ] && faltan="$faltan VERCEL_PROJECT_ID"
+          if [ -n "$faltan" ]; then
+            echo "::error::Faltan secrets en el repositorio:$faltan"
+            echo "Cargalos en Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          # No imprime valores, solo longitudes, para detectar espacios de mas
+          # o pegados incompletos sin exponer nada.
+          echo "VERCEL_TOKEN: ${#VERCEL_TOKEN} caracteres"
+          echo "VERCEL_ORG_ID: ${#VERCEL_ORG_ID} caracteres (esperado 29)"
+          echo "VERCEL_PROJECT_ID: ${#VERCEL_PROJECT_ID} caracteres (esperado 32)"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
       - name: Configurar Node
         uses: actions/setup-node@v4
         with:
@@ -68,12 +91,13 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
       # --prebuilt sube el resultado del paso anterior en vez de recompilar.
+      #
+      # No se captura la URL en $GITHUB_OUTPUT: la CLI 62 imprime el banner de
+      # version y un bloque JSON ademas de la URL, y un valor multilinea rompe
+      # el formato de GITHUB_OUTPUT. La URL de produccion es fija de todas
+      # formas (proyecto-t-c.vercel.app), asi que no hacia falta.
       - name: Deploy a produccion
-        id: deploy
-        run: |
-          url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
-          echo "url=$url" >> "$GITHUB_OUTPUT"
-          echo "Desplegado en $url"
+        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
